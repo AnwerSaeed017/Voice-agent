@@ -430,6 +430,21 @@ class LiveApiVerifier:
                      check=lambda body: ({call["call_id"] for call in body["data"]} == {call_id, second_call},
                                          "; 2 calls"))
 
+        deleted_call = f"{self.CALL_PREFIX}{uuid.uuid4().hex[:12]}"
+        deleted_phone = self._phone()
+        deleted_fields = self._patient(last_name="Verify-Deleted", phone_number=deleted_phone)
+        first = self._tool(section, "save_patient: first save of a call (setup for the next check)",
+                           "save_patient", deleted_fields, deleted_call,
+                           expect=lambda result: (result["action"] == "created", "; created"))
+        self._http.delete(f"/patients/{first['patient_id']}")
+        self._tool(section, "save_patient: retried after the record was deleted registers again",
+                   "save_patient", deleted_fields, deleted_call,
+                   expect=lambda result: (result["success"] and result["action"] == "created"
+                                          and result["patient_id"] != first["patient_id"], "; new record"),
+                   db=lambda: (self._rows_with_phone(deleted_phone) == 2
+                               and self._row(first["patient_id"]).deleted_at is not None,
+                               "old row stays soft-deleted, one new active row"))
+
     def _verify_boundaries(self) -> None:
         section = "Boundary values"
 

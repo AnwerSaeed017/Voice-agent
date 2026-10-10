@@ -230,7 +230,7 @@ python -m scripts.setup_vapi      # create/update the Vapi assistant and phone n
 
 `python -m scripts.verify_live_api` sends real requests to a running server and confirms
 each write by reading the row directly from the database. The latest run is in
-[`docs/api_verification.md`](docs/api_verification.md): 180 checks covering every
+[`docs/api_verification.md`](docs/api_verification.md): 182 checks covering every
 endpoint, invalid input, boundary values, the voice tools, malformed webhook messages,
 concurrency, database constraints, persistence across a restart, and migrations.
 

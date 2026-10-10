@@ -136,13 +136,18 @@ class VoiceAgentService(IVoiceAgentService):
         # created instead of inserting a duplicate. The lock makes "look up, then create"
         # atomic when two retries arrive at the same moment (single server process).
         with self._save_lock:
+            patient = None
             existing_patient_id = self._call_logs.registered_patient_id(call_id)
             if existing_patient_id:
-                patient = self._patients.update_patient(
-                    existing_patient_id, PatientUpdate(**fields)
-                )
-                action = "updated"
-            else:
+                try:
+                    patient = self._patients.update_patient(
+                        existing_patient_id, PatientUpdate(**fields)
+                    )
+                    action = "updated"
+                except NotFoundError:
+                    # The record this call created was deleted in the meantime; register again.
+                    patient = None
+            if patient is None:
                 patient = self._patients.create_patient(payload)
                 action = "created"
             self._link_call(call, patient.patient_id, fields)
