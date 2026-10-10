@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registered Patients</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px 16px; background: #f6f7f9; color: #1c2330; }
+    h1 { font-size: 1.4rem; margin: 0 0 4px; }
+    p.hint { margin: 0 0 16px; color: #5b6575; font-size: 0.9rem; }
+    form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    input, button { font: inherit; padding: 8px 10px; border: 1px solid #c5cbd6; border-radius: 6px; }
+    button { background: #1f5fbf; color: #fff; border-color: #1f5fbf; cursor: pointer; }
+    .table-wrap { overflow-x: auto; background: #fff; border: 1px solid #dfe3ea; border-radius: 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #edf0f4; white-space: nowrap; }
+    th { background: #f0f2f6; font-weight: 600; }
+    #status { margin-top: 12px; color: #5b6575; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Registered Patients</h1>
+  <p class="hint">Live view of <code>GET /patients</code>. API docs are at <a href="/docs">/docs</a>.</p>
+  <form id="search">
+    <input id="last-name" placeholder="Filter by last name" aria-label="Last name">
+    <button type="submit">Search</button>
+    <button type="button" id="refresh">Refresh</button>
+  </form>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th><th>Date of birth</th><th>Sex</th><th>Phone</th><th>Address</th>
+          <th>Insurance</th><th>Language</th><th>Registered (UTC)</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div id="status"></div>
+  <script>
+    class PatientDashboard {
+      constructor() {
+        this.rows = document.getElementById("rows");
+        this.status = document.getElementById("status");
+        this.lastName = document.getElementById("last-name");
+        document.getElementById("search").addEventListener("submit", (event) => {
+          event.preventDefault();
+          this.load();
+        });
+        document.getElementById("refresh").addEventListener("click", () => this.load());
+      }
+
+      async load() {
+        const query = this.lastName.value.trim()
+          ? "?last_name=" + encodeURIComponent(this.lastName.value.trim())
+          : "";
+        this.status.textContent = "Loading...";
+        try {
+          const response = await fetch("/patients" + query);
+          const body = await response.json();
+          if (body.error) throw new Error(body.error.message);
+          this.render(body.data);
+        } catch (error) {
+          this.rows.replaceChildren();
+          this.status.textContent = "Could not load patients: " + error.message;
+        }
+      }
+
+      render(patients) {
+        // textContent only: patient data is never interpreted as HTML.
+        this.rows.replaceChildren(...patients.map((patient) => {
+          const row = document.createElement("tr");
+          const cells = [
+            patient.first_name + " " + patient.last_name,
+            patient.date_of_birth,
+            patient.sex,
+            patient.phone_number,
+            [patient.address_line_1, patient.address_line_2, patient.city,
+             patient.state + " " + patient.zip_code].filter(Boolean).join(", "),
+            patient.insurance_provider || "-",
+            patient.preferred_language,
+            patient.created_at.replace("T", " ").slice(0, 16),
+          ];
+          for (const value of cells) {
+            const cell = document.createElement("td");
+            cell.textContent = value;
+            row.appendChild(cell);
+          }
+          return row;
+        }));
+        this.status.textContent = patients.length + " patient(s)";
+      }
+    }
+
+    new PatientDashboard().load();
+  </script>
+</body>
+</html>

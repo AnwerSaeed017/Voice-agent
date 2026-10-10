@@ -1,0 +1,15 @@
+# Secrets
+.env
+env/
+
+# The assessment brief is marked confidential; keep it out of the repo
+docs/voice_ai_agent.md
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local SQLite database
+*.db
