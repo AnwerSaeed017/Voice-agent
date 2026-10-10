@@ -34,6 +34,9 @@ class AssistantConfigBuilder(IAssistantConfigBuilder):
             # One webhook receives tool calls during the call and the report after it.
             "server": self._server(),
             "serverMessages": ["tool-calls", "end-of-call-report"],
+            # Vapi hangs up when the agent says this. It replaces an endCall tool, which the
+            # model either never called or called before speaking its closing line.
+            "endCallPhrases": ["goodbye"],
             "silenceTimeoutSeconds": 30,
             "maxDurationSeconds": 900,
         }

@@ -93,9 +93,11 @@ class AgentTools(IAgentTools):
                 required=["patient_id", "read_back_confirmed"],
                 hold_phrase="One moment while I update your record.",
             ),
-            # Built into Vapi: lets the model hang up after the closing line.
-            {"type": "endCall"},
         ]
+        # There is deliberately no endCall tool. In testing, the model called it straight
+        # after a successful save and hung up before saying "You're all set". The call is
+        # ended instead by the "goodbye" end-call phrase (see AssistantConfigBuilder), which
+        # can only fire after the closing line has been spoken.
 
     @staticmethod
     def _function_tool(

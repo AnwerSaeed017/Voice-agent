@@ -202,6 +202,9 @@ python -m scripts.setup_vapi      # create/update the Vapi assistant and phone n
 ```
 
 `setup_vapi` is safe to run again; run it after any change to the prompt or tools.
+The repo is the source of truth for the assistant: reload the Vapi dashboard after
+running it, because a test call started from a stale dashboard page uses that page's
+copy of the prompt, and saving from it overwrites the assistant.
 
 ### Environment variables
 
@@ -239,6 +242,7 @@ agent collected and the result returned to it.
 
 ## Known limitations and trade-offs
 
+- **The voice agent was tested with browser calls, not over the phone network.** Six test calls were made from the Vapi dashboard, covering new registration, invalid input, corrections, starting over, optional fields and a returning caller; the fixes they led to are in the commit history. No call was placed to the phone number itself, because no way of dialling a U.S. number was available during development. The number is confirmed active and attached to the assistant, but phone-line audio is lower quality than a browser microphone, so names and digits may be misheard more often on a real call.
 - **No authentication on the REST API.** Anyone with the URL can read and change records. Acceptable for an assessment with fictional data; the first thing to add for real use.
 - **Not HIPAA compliant.** Demographics are written to logs and stored unencrypted. Do not use real patient data.
 - **Synchronous database access.** Endpoints run in FastAPI's thread pool. Simple and correct at this scale; async drivers would be the choice under heavy concurrent load.
