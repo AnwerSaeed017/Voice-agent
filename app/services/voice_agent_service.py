@@ -130,6 +130,8 @@ class VoiceAgentService(IVoiceAgentService):
         self._logger.info("save_patient call_id=%s payload=%s", call_id, json.dumps(fields))
 
         payload = PatientCreate(**fields)
+        if arguments.get("read_back_confirmed") is not True:
+            return self._confirmation_required()
         # If the LLM retries after a slow response, update the record this call already
         # created instead of inserting a duplicate. The lock makes "look up, then create"
         # atomic when two retries arrive at the same moment (single server process).
@@ -165,7 +167,10 @@ class VoiceAgentService(IVoiceAgentService):
         except ValueError:
             return self._system_failure("The patient_id was not a valid id from check_existing_patient.")
 
-        patient = self._patients.update_patient(patient_id, PatientUpdate(**fields))
+        changes = PatientUpdate(**fields)
+        if arguments.get("read_back_confirmed") is not True:
+            return self._confirmation_required()
+        patient = self._patients.update_patient(patient_id, changes)
         self._link_call(call, patient.patient_id, fields)
         return {
             "success": True,
@@ -233,6 +238,20 @@ class VoiceAgentService(IVoiceAgentService):
             "instruction": (
                 "Nothing was saved. Ask the caller again for only these fields, explaining "
                 "the problem in plain words, then call the tool again with every field."
+            ),
+        }
+
+    @staticmethod
+    def _confirmation_required() -> dict:
+        """Server-side guard for the brief's rule that nothing is saved before the caller
+        has heard everything read back and confirmed it."""
+        return {
+            "success": False,
+            "error_type": "confirmation_required",
+            "instruction": (
+                "Nothing was saved. Read every collected detail back to the caller in full, "
+                "ask if it is all correct, and only after a clear yes call the tool again "
+                "with read_back_confirmed set to true."
             ),
         }
 

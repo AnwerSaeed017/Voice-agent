@@ -556,8 +556,15 @@ class LiveApiVerifier:
              lambda body: (first_result(body)["success"] is True, "; saved"),
              body={"message": {"type": "tool-calls", "call": {"id": call_id}, "toolCallList": [
                  {"id": "t", "name": "save_patient",
-                  "arguments": {**self._patient(phone_number=phone), "confidence": 0.9}}]}})
+                  "arguments": {**self._patient(phone_number=phone), "confidence": 0.9,
+                                "read_back_confirmed": True}}]}})
         self._record_db(lambda: (self._rows_with_phone(phone) == 1, "1 row saved"))
+        unconfirmed_phone = self._phone()
+        post("save_patient without read_back_confirmed is refused", 200,
+             lambda body: (first_result(body)["error_type"] == "confirmation_required", "; confirmation_required"),
+             body=self._tool_message("save_patient", self._patient(phone_number=unconfirmed_phone),
+                                     f"{self.CALL_PREFIX}{uuid.uuid4().hex[:12]}", confirmed=False))
+        self._record_db(lambda: (self._rows_with_phone(unconfirmed_phone) == 0, "nothing saved"))
         post("End-of-call report with no call id", 200, lambda body: (body == {}, "; ignored"),
              body={"message": {"type": "end-of-call-report", "endedReason": "x"}})
 
@@ -872,7 +879,10 @@ class LiveApiVerifier:
                      str(response.status_code), response.status_code == 200 and db_passed, db_note)
 
     @staticmethod
-    def _tool_message(tool, arguments, call_id, as_string=False, message_type="tool-calls") -> dict:
+    def _tool_message(tool, arguments, call_id, as_string=False, message_type="tool-calls",
+                      confirmed=True) -> dict:
+        if confirmed and tool in ("save_patient", "update_patient"):
+            arguments = {**arguments, "read_back_confirmed": True}
         if as_string:
             tool_call = {"id": "tool-1", "type": "function",
                          "function": {"name": tool, "arguments": json.dumps(arguments)}}

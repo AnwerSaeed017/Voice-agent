@@ -28,6 +28,18 @@ class AgentTools(IAgentTools):
         "emergency_contact_phone": {"type": "string", "description": "Optional. Exactly 10 digits."},
     }
 
+    # Not a patient field: a deliberate assertion by the model that the confirmation step
+    # happened. The server refuses to save without it (see VoiceAgentService).
+    _CONFIRMATION_PROPERTY = {
+        "read_back_confirmed": {
+            "type": "boolean",
+            "description": (
+                "true only if, in this call, you read every detail back to the caller in "
+                "full and they then said it is correct."
+            ),
+        }
+    }
+
     _REQUIRED_FIELDS = [
         "first_name",
         "last_name",
@@ -46,7 +58,8 @@ class AgentTools(IAgentTools):
                 name="check_existing_patient",
                 description=(
                     "Look up whether a patient record already exists for a phone number. "
-                    "Call once, as soon as the caller has given a valid 10-digit phone number."
+                    "Must be called on every call, immediately after the caller gives a valid "
+                    "10-digit phone number and before asking the next question."
                 ),
                 properties={"phone_number": self._PATIENT_PROPERTIES["phone_number"]},
                 required=["phone_number"],
@@ -58,8 +71,8 @@ class AgentTools(IAgentTools):
                     "Save a new patient registration. Call only after reading every detail "
                     "back to the caller and hearing them confirm it is all correct."
                 ),
-                properties=self._PATIENT_PROPERTIES,
-                required=self._REQUIRED_FIELDS,
+                properties={**self._PATIENT_PROPERTIES, **self._CONFIRMATION_PROPERTY},
+                required=[*self._REQUIRED_FIELDS, "read_back_confirmed"],
                 hold_phrase="Great, give me just a moment while I save that.",
             ),
             self._function_tool(
@@ -75,8 +88,9 @@ class AgentTools(IAgentTools):
                         "description": "The patient_id returned by check_existing_patient.",
                     },
                     **self._PATIENT_PROPERTIES,
+                    **self._CONFIRMATION_PROPERTY,
                 },
-                required=["patient_id"],
+                required=["patient_id", "read_back_confirmed"],
                 hold_phrase="One moment while I update your record.",
             ),
             # Built into Vapi: lets the model hang up after the closing line.

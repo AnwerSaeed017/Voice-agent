@@ -1,4 +1,5 @@
 import logging
+import re
 
 from app.core.config import Settings
 from app.interfaces.service import IVapiProvisioningService
@@ -9,6 +10,7 @@ class VapiProvisioningService(IVapiProvisioningService):
     """Idempotent setup of the Vapi side: safe to run again after every prompt change."""
 
     _logger = logging.getLogger(__name__)
+    _AREA_CODE_HINT = re.compile(r"Try one of (\d{3})")
 
     def __init__(
         self, client: IVapiClient, config_builder: IAssistantConfigBuilder, settings: Settings
@@ -46,12 +48,23 @@ class VapiProvisioningService(IVapiProvisioningService):
             return self._client.update_phone_number(
                 phone_numbers[0]["id"], {"assistantId": assistant_id}
             )
-        self._logger.info("Requesting a new number in area code %s", self._settings.vapi_area_code)
+        try:
+            return self._request_number(assistant_id, self._settings.vapi_area_code)
+        except RuntimeError as error:
+            # Vapi's free numbers come from a changing pool of area codes; when the preferred
+            # one is unavailable, the error message lists the ones that are.
+            suggested = self._AREA_CODE_HINT.search(str(error))
+            if not suggested:
+                raise
+            return self._request_number(assistant_id, suggested.group(1))
+
+    def _request_number(self, assistant_id: str, area_code: str) -> dict:
+        self._logger.info("Requesting a new number in area code %s", area_code)
         return self._client.create_phone_number(
             {
                 "provider": "vapi",
                 "name": "Patient Registration Line",
-                "numberDesiredAreaCode": self._settings.vapi_area_code,
+                "numberDesiredAreaCode": area_code,
                 "assistantId": assistant_id,
             }
         )

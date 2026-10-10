@@ -27,7 +27,7 @@ class Settings:
         self.vapi_model_provider = os.getenv("VAPI_MODEL_PROVIDER", "openai")
         self.vapi_model = os.getenv("VAPI_MODEL", "gpt-4.1")
         self.vapi_voice_provider = os.getenv("VAPI_VOICE_PROVIDER", "vapi")
-        self.vapi_voice_id = os.getenv("VAPI_VOICE_ID", "Paige")
+        self.vapi_voice_id = os.getenv("VAPI_VOICE_ID", "Clara")
         self.vapi_area_code = os.getenv("VAPI_AREA_CODE", "415")
 
     @staticmethod
