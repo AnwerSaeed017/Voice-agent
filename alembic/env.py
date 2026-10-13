@@ -13,9 +13,9 @@ class MigrationEnvironment:
 
     def __init__(self) -> None:
         self._url = Settings().database_url
+        if not self._url.startswith("postgresql"):
+            raise RuntimeError("DATABASE_URL must be set to a PostgreSQL URL before running migrations.")
         self._target_metadata = Base.metadata
-        # SQLite cannot ALTER most things in place; batch mode rebuilds the table instead.
-        self._render_as_batch = self._url.startswith("sqlite")
 
     def run(self) -> None:
         if context.is_offline_mode():
@@ -28,7 +28,6 @@ class MigrationEnvironment:
             url=self._url,
             target_metadata=self._target_metadata,
             literal_binds=True,
-            render_as_batch=self._render_as_batch,
         )
         with context.begin_transaction():
             context.run_migrations()
@@ -36,11 +35,7 @@ class MigrationEnvironment:
     def _run_online(self) -> None:
         engine = create_engine(self._url, poolclass=pool.NullPool)
         with engine.connect() as connection:
-            context.configure(
-                connection=connection,
-                target_metadata=self._target_metadata,
-                render_as_batch=self._render_as_batch,
-            )
+            context.configure(connection=connection, target_metadata=self._target_metadata)
             with context.begin_transaction():
                 context.run_migrations()
         engine.dispose()

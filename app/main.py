@@ -8,19 +8,22 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-# Project config and dependency container
+# Project constants, config and dependency container
+from app.constants.constants import DASHBOARD_CSP, DASHBOARD_FILE, STATIC_DIRECTORY
 from app.containers.container import Container
 
 # Routers
+from app.routers import dashboard_router as dashboard_routes
 from app.routers import patient_router as patient_routes
 from app.routers import vapi_router as vapi_routes
+from app.routers.dashboard_router import dashboard_router
 from app.routers.patient_router import patient_router
 from app.routers.vapi_router import vapi_router
 
@@ -30,11 +33,9 @@ from app.routers.vapi_router import vapi_router
 container = Container()
 container.utilities.logging_configurator().configure()
 # Resolves every Depends(Provide[...]) in the router modules against this container.
-container.wire(modules=[patient_routes, vapi_routes])
+container.wire(modules=[patient_routes, vapi_routes, dashboard_routes])
 
 logger = logging.getLogger("app")
-
-DASHBOARD_FILE = Path(__file__).resolve().parent / "static" / "dashboard.html"
 
 
 # ---------------------------------------------------------------------------
@@ -44,10 +45,6 @@ DASHBOARD_FILE = Path(__file__).resolve().parent / "static" / "dashboard.html"
 async def lifespan(app: FastAPI):
     logger.info("Starting up...")
     start_t = time.perf_counter()
-    if container.settings().database_url.startswith("sqlite"):
-        # Fine on a developer machine; on a host with an ephemeral disk this loses data on restart.
-        logger.warning("DATABASE_URL is not set: using a local SQLite file.")
-
     try:
         # The schema itself is created by `alembic upgrade head`, which runs before the server.
         container.database().execute_scalar(container.utilities.sql_loader().load("health_check"))
@@ -106,6 +103,8 @@ container.exception_handlers().register(app)
 # ---------------------------------------------------------------------------
 app.include_router(patient_router)
 app.include_router(vapi_router)
+app.include_router(dashboard_router)
+app.mount("/static", StaticFiles(directory=STATIC_DIRECTORY), name="static")
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +128,12 @@ def version() -> JSONResponse:
 
 @app.get("/", include_in_schema=False)
 def dashboard() -> FileResponse:
-    """Simple read-only page listing registered patients."""
-    return FileResponse(DASHBOARD_FILE, media_type="text/html")
+    """The web console. Its scripts and styles are served from /static."""
+    return FileResponse(
+        DASHBOARD_FILE,
+        media_type="text/html",
+        headers={"Content-Security-Policy": DASHBOARD_CSP, "Cache-Control": "no-cache"},
+    )
 
 
 # ---------------------------------------------------------------------------

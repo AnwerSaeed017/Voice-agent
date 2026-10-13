@@ -1,13 +1,12 @@
 """Builds the Vapi assistant definition, so the agent is configured from code in this
 repo rather than by hand in a dashboard."""
 
+from app.constants.constants import ASSISTANT_NAME
 from app.core.config import Settings
 from app.interfaces.utilities import IAgentPrompt, IAgentTools, IAssistantConfigBuilder
 
 
 class AssistantConfigBuilder(IAssistantConfigBuilder):
-    ASSISTANT_NAME = "Patient Registration Agent"
-
     def __init__(self, settings: Settings, prompt: IAgentPrompt, tools: IAgentTools) -> None:
         self._settings = settings
         self._prompt = prompt
@@ -15,7 +14,7 @@ class AssistantConfigBuilder(IAssistantConfigBuilder):
 
     def build(self) -> dict:
         return {
-            "name": self.ASSISTANT_NAME,
+            "name": ASSISTANT_NAME,
             "firstMessage": self._prompt.first_message(),
             "firstMessageMode": "assistant-speaks-first",
             "model": {

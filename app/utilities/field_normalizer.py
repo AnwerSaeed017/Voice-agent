@@ -7,52 +7,22 @@ canonical stored form, and raises ValueError with a plain-English reason otherwi
 import re
 from datetime import date, datetime
 
+from app.constants.constants import (
+    CONTROL_CHARACTERS,
+    DATE_FORMATS,
+    EARLIEST_BIRTH_YEAR,
+    EMAIL_PATTERN,
+    NAME_PATTERN,
+    SEX_ALIASES,
+    US_STATES,
+    US_STATE_BY_NAME,
+    ZIP_CODE_PATTERN,
+)
 from app.interfaces.utilities import IClock, IFieldNormalizer
 from app.models.enums import Sex
 
 
 class FieldNormalizer(IFieldNormalizer):
-    _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
-    # Letters (any alphabet) separated by single hyphens, apostrophes or spaces.
-    # Spaces go beyond the brief's "alphabetic + hyphens/apostrophes" on purpose:
-    # rejecting "De La Cruz" or "Mary Ann" would be wrong for real callers.
-    _NAME = re.compile(r"^[^\W\d_]+(?:[ '\-][^\W\d_]+)*$")
-    _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s.]{2,}$")
-    _ZIP = re.compile(r"^\d{5}(-\d{4})?$")
-    _DATE_FORMATS = ("%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y")
-    _EARLIEST_BIRTH_YEAR = 1900
-
-    _SEX_ALIASES = {
-        "male": Sex.MALE,
-        "m": Sex.MALE,
-        "man": Sex.MALE,
-        "female": Sex.FEMALE,
-        "f": Sex.FEMALE,
-        "woman": Sex.FEMALE,
-        "other": Sex.OTHER,
-        "decline to answer": Sex.DECLINE_TO_ANSWER,
-        "decline": Sex.DECLINE_TO_ANSWER,
-        "prefer not to say": Sex.DECLINE_TO_ANSWER,
-    }
-
-    _STATES = {
-        "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
-        "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "DC": "District of Columbia",
-        "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois",
-        "IN": "Indiana", "IA": "Iowa", "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana",
-        "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts", "MI": "Michigan",
-        "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri", "MT": "Montana",
-        "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey",
-        "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota",
-        "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania",
-        "RI": "Rhode Island", "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee",
-        "TX": "Texas", "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington",
-        "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
-        "PR": "Puerto Rico", "GU": "Guam", "VI": "Virgin Islands", "AS": "American Samoa",
-        "MP": "Northern Mariana Islands",
-    }
-    _STATE_BY_NAME = {name.lower(): code for code, name in _STATES.items()}
-
     def __init__(self, clock: IClock) -> None:
         self._clock = clock
 
@@ -61,7 +31,7 @@ class FieldNormalizer(IFieldNormalizer):
         treat an empty string as 'not provided'. Non-strings pass through untouched."""
         if not isinstance(value, str):
             return value
-        value = self._CONTROL_CHARS.sub(" ", value)
+        value = CONTROL_CHARACTERS.sub(" ", value)
         value = " ".join(value.split())
         return value or None
 
@@ -72,7 +42,7 @@ class FieldNormalizer(IFieldNormalizer):
         value = value.replace("’", "'")
         if len(value) > 50:
             raise ValueError("must be 50 characters or fewer")
-        if not self._NAME.match(value):
+        if not NAME_PATTERN.match(value):
             raise ValueError("may contain only letters, hyphens and apostrophes")
         return value
 
@@ -86,15 +56,15 @@ class FieldNormalizer(IFieldNormalizer):
             value = self._parse_date(value)
         if value > self._clock.today():
             raise ValueError("cannot be in the future")
-        if value.year < self._EARLIEST_BIRTH_YEAR:
-            raise ValueError(f"year must be {self._EARLIEST_BIRTH_YEAR} or later")
+        if value.year < EARLIEST_BIRTH_YEAR:
+            raise ValueError(f"year must be {EARLIEST_BIRTH_YEAR} or later")
         return value
 
     def sex(self, value: object) -> str | None:
         value = self._text_or_none(value)
         if value is None:
             return None
-        match = self._SEX_ALIASES.get(value.lower())
+        match = SEX_ALIASES.get(value.lower())
         if match is None:
             options = ", ".join(option.value for option in Sex)
             raise ValueError(f"must be one of: {options}")
@@ -118,7 +88,7 @@ class FieldNormalizer(IFieldNormalizer):
         if value is None:
             return None
         value = value.lower()
-        if len(value) > 254 or not self._EMAIL.match(value):
+        if len(value) > 254 or not EMAIL_PATTERN.match(value):
             raise ValueError("must be a valid email address, like name@example.com")
         return value
 
@@ -126,10 +96,10 @@ class FieldNormalizer(IFieldNormalizer):
         value = self._text_or_none(value)
         if value is None:
             return None
-        if value.upper() in self._STATES:
+        if value.upper() in US_STATES:
             return value.upper()
         # Callers say "Texas", not "T X"; accept the full name and store the abbreviation.
-        code = self._STATE_BY_NAME.get(value.lower())
+        code = US_STATE_BY_NAME.get(value.lower())
         if code is None:
             raise ValueError("must be a valid 2-letter U.S. state abbreviation")
         return code
@@ -143,7 +113,7 @@ class FieldNormalizer(IFieldNormalizer):
         value = value.replace(" ", "")
         if value.isdigit() and len(value) == 9:
             value = f"{value[:5]}-{value[5:]}"
-        if not self._ZIP.match(value):
+        if not ZIP_CODE_PATTERN.match(value):
             raise ValueError("must be a 5-digit ZIP code or ZIP+4 (12345 or 12345-6789)")
         return value
 
@@ -169,7 +139,7 @@ class FieldNormalizer(IFieldNormalizer):
         return value
 
     def _parse_date(self, value: str) -> date:
-        for date_format in self._DATE_FORMATS:
+        for date_format in DATE_FORMATS:
             try:
                 return datetime.strptime(value, date_format).date()
             except ValueError:

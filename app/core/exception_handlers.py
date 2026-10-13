@@ -7,14 +7,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.constants.constants import HTTP_ERROR_CODES
 from app.core.exceptions import DomainError
 from app.interfaces.utilities import IResponseBuilder, IValidationErrorFormatter
 
 
 class ExceptionHandlers:
     _logger = logging.getLogger(__name__)
-
-    _HTTP_CODES = {404: "not_found", 405: "method_not_allowed"}
 
     def __init__(
         self, responses: IResponseBuilder, error_formatter: IValidationErrorFormatter
@@ -48,7 +47,7 @@ class ExceptionHandlers:
     async def _handle_http_exception(
         self, request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
-        code = self._HTTP_CODES.get(exc.status_code, "http_error")
+        code = HTTP_ERROR_CODES.get(exc.status_code, "http_error")
         return self._responses.error(exc.status_code, code, str(exc.detail))
 
     async def _handle_unexpected(self, request: Request, exc: Exception) -> JSONResponse:

@@ -47,11 +47,12 @@ phone passes exactly the same validation as one sent to `POST /patients`.
 |---|---|---|
 | Routers | `app/routers` | HTTP only: parse the request, call a service, wrap the response |
 | Services | `app/services` | Business rules; the voice agent's tool handlers |
-| Repositories | `app/repositories` | All SQL; hides soft-deleted rows |
+| Repositories | `app/repositories` | Call the SQL functions; no SQL is written in Python |
+| SQL | `app/sql/functions` | PostgreSQL functions holding every query; soft-deleted rows are hidden here |
 | Models | `app/models` | SQLAlchemy tables |
 | Schemas | `app/schemas` | Request/response payloads and validation |
 | Utilities | `app/utilities` | Field normalisation, response envelope, error formatting |
-| Voice | `app/voice` | The agent's prompt, tools and Vapi configuration |
+| Voice | `app/voice_agent` | The agent's prompt, tools and Vapi configuration |
 | Interfaces | `app/interfaces` | An abstract class for every service, repository and utility |
 | Containers | `app/containers` + one per layer | Dependency injection wiring |
 | Database | `app/database` | Engine and transactional sessions |
@@ -77,13 +78,13 @@ Each layer has its own container (`app/services/container.py`, and so on), and
 | **Vapi** for telephony, speech and LLM orchestration | Provides the phone number, speech-to-text, text-to-speech, interruption handling and tool calling, so the effort goes into the prompt and the backend. The assistant is created from code in this repo, not by hand in a dashboard. |
 | **FastAPI** | Typed request validation, automatic OpenAPI docs, small surface. |
 | **PostgreSQL** | Real column types and constraints (UUID, DATE, CHECK), and data that survives restarts on any host. |
-| **SQLAlchemy + Alembic** | The models are the single source of the schema; the migration is generated from them. |
+| **SQLAlchemy + Alembic** | The models are the single source of the table schema; the first migration is generated from them. A second migration then loads the SQL functions from `app/sql/functions`, which the repositories call by name. |
 | **dependency-injector** | Explicit wiring, so any implementation can be swapped or faked. |
 | **Railway** | Always-on process with managed Postgres; no cold start in the middle of a call. |
 
 ## The voice agent prompt
 
-The system prompt is in [`app/voice/agent_prompt.py`](app/voice/agent_prompt.py). It is
+The system prompt is in [`app/voice_agent/agent_prompt.py`](app/voice_agent/agent_prompt.py). It is
 split into named sections, each with a comment explaining why it exists:
 
 | Section | Purpose |
@@ -101,7 +102,7 @@ Validation rules appear in the prompt so the agent can catch bad input the momen
 spoken. The server validates again on save; the prompt is for a good conversation, the
 server is for correctness.
 
-The tools are defined in [`app/voice/agent_tools.py`](app/voice/agent_tools.py) and
+The tools are defined in [`app/voice_agent/agent_tools.py`](app/voice_agent/agent_tools.py) and
 executed by [`app/services/voice_agent_service.py`](app/services/voice_agent_service.py).
 
 ## REST API
@@ -137,6 +138,22 @@ curl "$API/patients?last_name=Doe"
 curl -X PUT "$API/patients/<id>" -H "Content-Type: application/json" -d '{"city": "Chicago"}'
 curl -X DELETE "$API/patients/<id>"
 ```
+
+## Web console
+
+The page at `/` is a small operations console for front-desk staff, served by the same
+application (`app/static`, plain HTML, CSS and JavaScript modules with no build step).
+
+| Page | What it does |
+|---|---|
+| Overview | Totals, share of patients registered by voice, registrations per day, record completeness, latest registrations and calls |
+| Patients | Server-side search, filter by source (voice or API), sorting, paging, CSV export; a side panel to view, edit or remove a record |
+| Calls | Every call including those that ended without a registration, searchable by patient, caller number or transcript text, with the conversation shown turn by turn |
+
+It reads through three extra endpoints, `GET /dashboard/summary`, `/dashboard/patients`
+and `/dashboard/calls`, and edits or removes patients through the `/patients` API, so it
+gets the same validation as every other client. The page is served with a strict
+Content-Security-Policy and writes record data as text only.
 
 ## Data model
 
@@ -210,7 +227,7 @@ copy of the prompt, and saving from it overwrites the assistant.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL URL. If unset, falls back to a local SQLite file and logs a warning. |
+| `DATABASE_URL` | Yes | PostgreSQL URL. Required: the data layer calls PostgreSQL functions, so no other database is supported. |
 | `VAPI_WEBHOOK_SECRET` | Yes | Shared secret Vapi sends in `X-Vapi-Secret`; requests without it get 401. |
 | `PUBLIC_BASE_URL` | For setup | Public HTTPS URL of this service, given to Vapi as the webhook address. |
 | `VAPI_API_KEY` | For setup | Vapi private key, used only by `scripts/setup_vapi.py`. |
@@ -229,33 +246,50 @@ copy of the prompt, and saving from it overwrites the assistant.
 
 `railway.json` runs `alembic upgrade head` before starting the server.
 
-## Verification
+## Tests
 
-`python -m scripts.verify_live_api` sends real requests to a running server and confirms
-each write by reading the row directly from the database. The latest run is in
-[`docs/api_verification.md`](docs/api_verification.md): 182 checks covering every
-endpoint, invalid input, boundary values, the voice tools, malformed webhook messages,
-concurrency, database constraints, persistence across a restart, and migrations.
+```bash
+pytest                      # everything
+pytest app/tests/unit       # no database needed
+pytest -m "not browser"     # skip the headless-browser tests
+```
+
+| Folder | What it covers | Needs |
+|---|---|---|
+| `app/tests/unit` | Field rules, schemas, the voice agent's tool handlers (with fakes), dashboard figures, the agent's prompt and tool definitions, the SQL function files | Nothing |
+| `app/tests/integration` | The REST API, the Vapi webhook, the console endpoints and the SQL functions | PostgreSQL (`DATABASE_URL`) |
+| `app/tests/frontend/unit` | The console's formatting helpers and API client, run with Node's built-in test runner | Node 22+ |
+| `app/tests/frontend` | The console in a headless Edge or Chrome: search, editing with validation errors, removal, transcripts, theme, phone layout | PostgreSQL and a browser |
+
+Integration and browser tests run against the database in `DATABASE_URL`. Every row they
+create is marked (a last name starting `Pytest`, a call id starting `pytest-`) and removed
+before and after the run. Tests that lack Node or a browser are skipped, not failed.
+
+`python -m scripts.verify_live_api` is a separate end-to-end check for a running server,
+deployed or local. It confirms each write by reading the row from the database, and also
+covers concurrency, database constraints, persistence across a restart and migrations.
+The latest run is in [`docs/api_verification.md`](docs/api_verification.md).
 
 Observability: every tool call is logged to stdout with the call id, the payload the
 agent collected and the result returned to it.
 
 ## Known limitations and trade-offs
 
-- **The voice agent was tested with browser calls, not over the phone network.** Five test calls were made from the Vapi dashboard, covering new registration, invalid input, corrections, starting over, optional fields and a returning caller; the fixes they led to are in the commit history. No call was placed to the phone number itself, because no way of dialling a U.S. number was available during development. The number is confirmed active and attached to the assistant, but phone-line audio is lower quality than a browser microphone, so names and digits may be misheard more often on a real call.
-- **No authentication on the REST API.** Anyone with the URL can read and change records. Acceptable for an assessment with fictional data; the first thing to add for real use.
+- **Most voice testing used browser calls.** Five test calls were made from the Vapi dashboard, covering new registration, invalid input, corrections, starting over, optional fields and a returning caller; the fixes they led to are in the commit history. Two calls then reached the phone number itself over the phone network. One ran a full conversation and exposed a fault: the agent said the closing line without saving. The prompt was tightened in response (save immediately after the caller's yes; never say "You're all set" without a successful save). Phone-line audio is lower quality than a browser microphone, so names and digits are misheard more often on a real call.
+- **No authentication on the REST API or the web console.** Anyone with the URL can read, change and remove records, including through the console's edit and remove buttons. Acceptable for an assessment with fictional data; the first thing to add for real use.
 - **Not HIPAA compliant.** Demographics are written to logs and stored unencrypted. Do not use real patient data.
 - **Synchronous database access.** Endpoints run in FastAPI's thread pool. Simple and correct at this scale; async drivers would be the choice under heavy concurrent load.
 - **Duplicate-save protection is an in-process lock.** It holds for one server process; several processes would need a database-level guard.
 - **Phone numbers are not unique.** Family members share phones, so the agent asks rather than assuming.
 - **A returning caller is identified by phone number alone.** To limit exposure, the agent only ever reads back the name on file.
+- **PostgreSQL only.** Queries live in the database as SQL functions (`app/sql/functions`), loaded by `alembic upgrade head`. That keeps SQL out of Python, at the cost of the SQLite option for local development. Changing a function means adding a migration that reloads the files.
 - **Some rules live only in the application**, not the database (see [Data model](#data-model)).
 - **No rate limiting; CORS allows any origin**, so reviewers can call the API from anywhere.
-- **No automated test suite in CI.** The verification script needs a running server and database.
+- **Tests are not wired into CI.** The suite exists (`pytest`) but nothing runs it automatically on push.
 
 ## Next steps
 
 - API authentication and per-caller identity verification before updates.
-- A pytest suite running in CI.
+- Run the test suite in CI on every push.
 - Spanish support and appointment scheduling.
 - Database-level idempotency for saves; async database access.

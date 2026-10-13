@@ -1,6 +1,6 @@
 import logging
-import re
 
+from app.constants.constants import AREA_CODE_HINT
 from app.core.config import Settings
 from app.interfaces.service import IVapiProvisioningService
 from app.interfaces.utilities import IAssistantConfigBuilder, IVapiClient
@@ -10,7 +10,6 @@ class VapiProvisioningService(IVapiProvisioningService):
     """Idempotent setup of the Vapi side: safe to run again after every prompt change."""
 
     _logger = logging.getLogger(__name__)
-    _AREA_CODE_HINT = re.compile(r"Try one of (\d{3})")
 
     def __init__(
         self, client: IVapiClient, config_builder: IAssistantConfigBuilder, settings: Settings
@@ -53,7 +52,7 @@ class VapiProvisioningService(IVapiProvisioningService):
         except RuntimeError as error:
             # Vapi's free numbers come from a changing pool of area codes; when the preferred
             # one is unavailable, the error message lists the ones that are.
-            suggested = self._AREA_CODE_HINT.search(str(error))
+            suggested = AREA_CODE_HINT.search(str(error))
             if not suggested:
                 raise
             return self._request_number(assistant_id, suggested.group(1))

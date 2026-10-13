@@ -1,24 +1,19 @@
 """Runtime configuration, read from environment variables (.env in local dev)."""
 
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
+
+from app.constants.constants import ENV_FILE
 
 
 class Settings:
     """All configuration in one place; nothing else in the app reads os.environ."""
 
-    DEFAULT_DATABASE_URL = "sqlite:///./patients.db"
-    # Local secrets live in env/.env (git-ignored). In production the host injects real
-    # environment variables, which always win over the file.
-    ENV_FILE = Path(__file__).resolve().parents[2] / "env" / ".env"
-
     def __init__(self) -> None:
-        load_dotenv(self.ENV_FILE)
-        self.database_url = self._normalize_database_url(
-            os.getenv("DATABASE_URL") or self.DEFAULT_DATABASE_URL
-        )
+        load_dotenv(ENV_FILE)
+        # Required, and must be PostgreSQL: Database refuses anything else when it is created.
+        self.database_url = self._normalize_database_url(os.getenv("DATABASE_URL", "").strip())
         self.public_base_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
         self.vapi_api_key = os.getenv("VAPI_API_KEY", "").strip()
         self.vapi_webhook_secret = os.getenv("VAPI_WEBHOOK_SECRET", "").strip()

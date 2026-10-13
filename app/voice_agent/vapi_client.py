@@ -1,12 +1,11 @@
 import httpx
 
+from app.constants.constants import VAPI_BASE_URL
 from app.interfaces.utilities import IVapiClient
 
 
 class VapiClient(IVapiClient):
     """Thin wrapper over the Vapi REST API (https://api.vapi.ai)."""
-
-    _BASE_URL = "https://api.vapi.ai"
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
@@ -34,7 +33,7 @@ class VapiClient(IVapiClient):
             raise RuntimeError("VAPI_API_KEY is not set (see .env.example).")
         response = httpx.request(
             method,
-            self._BASE_URL + path,
+            VAPI_BASE_URL + path,
             json=body,
             headers={"Authorization": f"Bearer {self._api_key}"},
             timeout=30,

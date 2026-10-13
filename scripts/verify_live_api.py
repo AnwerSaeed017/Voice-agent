@@ -6,17 +6,16 @@ and write the outcome to docs/api_verification.md.
 
 The script must be able to reach the same database as the server (DATABASE_URL), because
 every write is confirmed by reading the row back directly. All rows it creates carry the
-last name "Verify..." or a call id starting "verify-", and are removed at the end.
+last name "Verify..." or a call id starting "verify-", and are removed at the end. The
+migration checks create and drop a throwaway database on the same PostgreSQL server.
 """
 
 import argparse
 import json
 import os
 import re
-import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -26,7 +25,8 @@ from unittest.mock import patch
 
 import httpx
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, func, select
+from sqlalchemy import create_engine, delete, func, select, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 
 from app.containers.container import Container
@@ -754,38 +754,67 @@ class LiveApiVerifier:
         raise RuntimeError(f"Server did not start on port {port}")
 
     def _verify_migrations(self) -> None:
+        """Runs the migrations into a throwaway database created beside the live one."""
         section = "Alembic migrations"
         root = Path(__file__).resolve().parents[1]
-        scratch = Path(tempfile.mkdtemp(prefix="verify_migrations_")) / "scratch.db"
-        environment = {**os.environ, "DATABASE_URL": f"sqlite:///{scratch.as_posix()}"}
+        live = make_url(self._container.settings().database_url)
+        scratch_name = f"verify_migrations_{uuid.uuid4().hex[:10]}"
+        admin = create_engine(live, isolation_level="AUTOCOMMIT")
+        try:
+            with admin.connect() as connection:
+                connection.execute(text(f'CREATE DATABASE "{scratch_name}"'))
+        except DBAPIError as error:
+            self._record(section, "Create a scratch database for the migration checks", "CREATE DATABASE",
+                         "created", f"not possible here ({type(error.orig).__name__})", False)
+            return
+        scratch = create_engine(live.set(database=scratch_name))
+        environment = {**os.environ,
+                       "DATABASE_URL": live.set(database=scratch_name).render_as_string(hide_password=False)}
 
         def alembic(*arguments, env=environment) -> subprocess.CompletedProcess:
             return subprocess.run([sys.executable, "-m", "alembic", *arguments], cwd=root, env=env,
                                   capture_output=True, text=True)
 
-        def tables() -> set[str]:
-            with sqlite3.connect(scratch) as connection:
-                return {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        def objects() -> tuple[set[str], int]:
+            with scratch.connect() as connection:
+                tables = set(connection.execute(text(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public'")).scalars())
+                functions = connection.execute(text(
+                    "SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace")).scalar()
+            scratch.dispose()
+            return tables, functions
 
-        result = alembic("upgrade", "head")
-        self._record(section, "upgrade head on an empty database", "alembic upgrade head",
-                     "patients and call_logs created", f"exit {result.returncode}; tables {sorted(tables())}",
-                     result.returncode == 0 and {"patients", "call_logs"} <= tables())
-        result = alembic("downgrade", "base")
-        self._record(section, "downgrade base removes the tables", "alembic downgrade base",
-                     "tables dropped", f"exit {result.returncode}; tables {sorted(tables())}",
-                     result.returncode == 0 and not {"patients", "call_logs"} & tables())
-        result = alembic("upgrade", "head")
-        self._record(section, "upgrade head again after a downgrade", "alembic upgrade head",
-                     "tables recreated", f"exit {result.returncode}",
-                     result.returncode == 0 and {"patients", "call_logs"} <= tables())
+        try:
+            result = alembic("upgrade", "head")
+            tables, functions = objects()
+            self._record(section, "upgrade head on an empty database", "alembic upgrade head",
+                         "tables and SQL functions created",
+                         f"exit {result.returncode}; tables {sorted(tables - {'alembic_version'})}; {functions} functions",
+                         result.returncode == 0 and {"patients", "call_logs"} <= tables and functions >= 18)
+            result = alembic("downgrade", "base")
+            tables, functions = objects()
+            self._record(section, "downgrade base removes tables and functions", "alembic downgrade base",
+                         "tables and functions dropped",
+                         f"exit {result.returncode}; tables {sorted(tables - {'alembic_version'})}; {functions} functions",
+                         result.returncode == 0 and not {"patients", "call_logs"} & tables and functions == 0)
+            result = alembic("upgrade", "head")
+            tables, functions = objects()
+            self._record(section, "upgrade head again after a downgrade", "alembic upgrade head",
+                         "tables and functions recreated", f"exit {result.returncode}; {functions} functions",
+                         result.returncode == 0 and {"patients", "call_logs"} <= tables and functions >= 18)
+        finally:
+            scratch.dispose()
+            with admin.connect() as connection:
+                connection.execute(text(f'DROP DATABASE IF EXISTS "{scratch_name}" WITH (FORCE)'))
+            admin.dispose()
+
         result = alembic("check", env=dict(os.environ))
         self._record(section, "Live database matches the models (no pending migration)", "alembic check",
                      "no new operations", f"exit {result.returncode}; {result.stdout.strip().splitlines()[-1:]}",
                      result.returncode == 0)
         result = alembic("current", env=dict(os.environ))
-        self._record(section, "Live database is at the latest revision", "alembic current", "0001 (head)",
-                     result.stdout.strip() or result.stderr.strip()[-80:], "(head)" in result.stdout)
+        self._record(section, "Live database is at the latest revision", "alembic current", "0002 (head)",
+                     result.stdout.strip() or result.stderr.strip()[-80:], "0002 (head)" in result.stdout)
 
     def _verify_failure_handling(self) -> None:
         """A database outage cannot be staged on a live server, so these three checks run
@@ -1026,7 +1055,7 @@ class LiveApiVerifier:
     def _write_report(self, removed: int) -> None:
         passed = sum(result["passed"] for result in self._results)
         failed = len(self._results) - passed
-        engine_name = self._database.execute_scalar("SELECT version()") if self._is_postgres() else "SQLite"
+        engine_name = self._database.execute_scalar("SELECT version()")
         lines = [
             "# API Verification Report",
             "",
@@ -1074,9 +1103,6 @@ class LiveApiVerifier:
             "",
         ]
         self.REPORT_FILE.write_text("\n".join(lines), encoding="utf-8")
-
-    def _is_postgres(self) -> bool:
-        return self._container.settings().database_url.startswith("postgresql")
 
     @staticmethod
     def _cell(text: str) -> str:

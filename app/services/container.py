@@ -3,6 +3,7 @@
 from dependency_injector import containers, providers
 
 from app.services.call_log_service import CallLogService
+from app.services.dashboard_service import DashboardService
 from app.services.patient_service import PatientService
 from app.services.seed_service import SeedService
 from app.services.vapi_provisioning_service import VapiProvisioningService
@@ -20,6 +21,12 @@ class ServiceContainer(containers.DeclarativeContainer):
     )
     call_log_service = providers.Singleton(
         CallLogService, call_logs=repositories.call_log_repository
+    )
+    dashboard_service = providers.Singleton(
+        DashboardService,
+        patients=repositories.patient_repository,
+        call_logs=repositories.call_log_repository,
+        clock=utilities.clock,
     )
     seed_service = providers.Singleton(
         SeedService,

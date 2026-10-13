@@ -10,10 +10,10 @@ from app.utilities.response_builder import ResponseBuilder
 from app.utilities.secret_verifier import SharedSecretVerifier
 from app.utilities.sql_loader import SqlFileLoader
 from app.utilities.validation_error_formatter import ValidationErrorFormatter
-from app.voice.agent_prompt import AgentPrompt
-from app.voice.agent_tools import AgentTools
-from app.voice.assistant_config_builder import AssistantConfigBuilder
-from app.voice.vapi_client import VapiClient
+from app.voice_agent.agent_prompt import AgentPrompt
+from app.voice_agent.agent_tools import AgentTools
+from app.voice_agent.assistant_config_builder import AssistantConfigBuilder
+from app.voice_agent.vapi_client import VapiClient
 
 
 class UtilityContainer(containers.DeclarativeContainer):

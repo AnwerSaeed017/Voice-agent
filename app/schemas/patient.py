@@ -17,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.constants.constants import SERVER_MANAGED_FIELDS
 from app.interfaces.utilities import IFieldNormalizer
 from app.utilities.clock import UtcClock
 from app.utilities.field_normalizer import FieldNormalizer
@@ -28,14 +29,6 @@ class PatientFieldRules(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     normalizer: ClassVar[IFieldNormalizer] = FieldNormalizer(UtcClock())
-    # Set by the server, never by the client. They are dropped from input (rather than
-    # rejected as unknown) so a record fetched with GET can be edited and sent back with PUT.
-    SERVER_MANAGED_FIELDS: ClassVar[tuple[str, ...]] = (
-        "patient_id",
-        "created_at",
-        "updated_at",
-        "deleted_at",
-    )
 
     @model_validator(mode="before")
     @classmethod
@@ -44,7 +37,7 @@ class PatientFieldRules(BaseModel):
             return {
                 field: value
                 for field, value in data.items()
-                if field not in cls.SERVER_MANAGED_FIELDS
+                if field not in SERVER_MANAGED_FIELDS
             }
         return data
 
