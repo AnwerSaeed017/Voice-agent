@@ -39,6 +39,7 @@ class TestPrompt:
 
     @pytest.mark.parametrize("rule", [
         "read all of it back",                      # confirmation before saving
+        "both the first name and the last name spelled letter by letter",  # misheard names
         "Do not speak first",                       # save immediately after the caller's yes
         "only when save_patient or update_patient has returned success true",
         "Thanks for calling. Goodbye.",             # fixed closing line that ends the call

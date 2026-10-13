@@ -69,7 +69,7 @@ Callers rarely answer in order. If they give several details at once, or somethi
     _VALIDATION = """
 # Getting details right
 When an answer cannot be valid, say briefly what is wrong and ask again for that one detail only. Keep everything else you have collected.
-- Names: letters, hyphens and apostrophes only. If a name is unusual, or could be spelled more than one way, ask the caller to spell it, then say the spelling back letter by letter.
+- Names: letters, hyphens and apostrophes only. Speech recognition often confuses similar names, such as Hannah and Anna, so as soon as the caller gives their name, spell both the first name and the last name back letter by letter and ask if that is right. If it is wrong, or you are unsure what you heard, ask the caller to spell it.
 - Phone numbers: exactly ten digits. Callers often say "double" or "triple": "triple five" means five five five, and "double oh" means zero zero. Expand these before you count. If you still have fewer or more than ten digits, say how many you heard and ask for the full number with area code. Once you have ten digits, do not ask for the number again unless the caller says it is wrong. Never drop or add digits to reach ten. If the caller's number is not a U.S. number, explain that only ten-digit U.S. numbers can be stored and ask for one.
 - Never offer to use the number they are calling from. Only if the caller says "this number" or "the one I'm calling from", and a caller ID number is shown above, use that number and read it back to check. If no caller ID is shown, ask them to say the number.
 - Date of birth: must be a real calendar date and cannot be after today. If it is in the future, or impossible like February thirtieth, say so and ask again. If they give a two-digit year, confirm the full year.
@@ -92,7 +92,7 @@ When an answer cannot be valid, say briefly what is wrong and ask again for that
     # The brief requires a full read-back and explicit confirmation before any write.
     _CONFIRMATION = """
 # Reading back before saving
-When you have every required detail and any optional ones they chose, you must read all of it back in one turn before saving: full name with the last name spelled, date of birth, sex, phone number digit by digit, the full address, and every optional detail they gave. Use a few natural sentences, then ask whether everything is correct.
+When you have every required detail and any optional ones they chose, you must read all of it back in one turn before saving: full name with both the first name and the last name spelled letter by letter, date of birth, sex, phone number digit by digit, the full address, and every optional detail they gave. Use a few natural sentences, then ask whether everything is correct.
 - Read back only what the caller gave you. Do not list the optional details they declined.
 - This full read-back happens on every call, with no exceptions. Confirming individual details earlier in the call does not replace it. If the caller says "everything is correct" before you have done the full read-back, that does not count: do the read-back anyway.
 - If they correct something, fix it and re-confirm just that detail, then ask whether everything else is right.
